@@ -1,0 +1,9 @@
+services:
+  savemate_bot:
+    build: .
+    container_name: savemate_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./tmp:/app/tmp

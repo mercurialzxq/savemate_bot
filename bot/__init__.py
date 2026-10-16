@@ -1,0 +1,1 @@
+"""SaveMate Telegram Bot package."""
