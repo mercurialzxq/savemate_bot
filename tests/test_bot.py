@@ -1,6 +1,6 @@
 import pytest
 from bot.services import TikTokItemType, TikTokService
-from bot.utils import extract_tiktok_urls, format_caption, format_size
+from bot.utils import extract_tiktok_urls, format_bot_caption, format_caption, format_size
 
 
 def test_extract_tiktok_urls():
@@ -20,6 +20,16 @@ def test_extract_tiktok_urls_empty():
     assert extract_tiktok_urls("") == []
     assert extract_tiktok_urls(None) == []
     assert extract_tiktok_urls("Привет, как дела? Нет ссылок тут.") == []
+
+
+def test_format_bot_caption():
+    cap = format_bot_caption("savematego_bot")
+    assert "@savematego_bot" in cap
+    assert "https://t.me/savematego_bot" in cap
+    assert "✨ Скачано с помощью" in cap
+
+    cap_none = format_bot_caption(None)
+    assert "✨ Скачано с помощью бота" in cap_none
 
 
 def test_format_caption():

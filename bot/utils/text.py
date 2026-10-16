@@ -32,6 +32,16 @@ def extract_tiktok_urls(text: Optional[str]) -> list[str]:
     return cleaned_urls
 
 
+def format_bot_caption(bot_username: Optional[str] = None) -> str:
+    """
+    Format a Telegram HTML caption referencing the bot instead of the original video title/author.
+    """
+    if bot_username:
+        clean_user = bot_username.lstrip("@")
+        return f"✨ Скачано с помощью <a href=\"https://t.me/{clean_user}\">@{clean_user}</a>"
+    return "✨ Скачано с помощью бота"
+
+
 def format_caption(
     title: Optional[str] = None,
     author_nickname: Optional[str] = None,

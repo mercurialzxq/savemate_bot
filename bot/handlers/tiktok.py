@@ -17,7 +17,7 @@ from bot.services import (
     TikTokService,
     TikTokSizeLimitError,
 )
-from bot.utils import extract_tiktok_urls, format_caption
+from bot.utils import extract_tiktok_urls, format_bot_caption
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +65,8 @@ async def process_tiktok_url(message: Message, url: str) -> None:
         # Fetch media info
         media_info = await tiktok_service.get_media_info(url)
 
-        author_nick = media_info.author.nickname if media_info.author else None
-        author_user = media_info.author.username if media_info.author else None
-        caption = format_caption(
-            title=media_info.title,
-            author_nickname=author_nick,
-            author_username=author_user,
-        )
+        bot_user = await message.bot.get_me()
+        caption = format_bot_caption(bot_user.username)
 
         if media_info.media_type == TikTokItemType.PHOTOS:
             await handle_photos(
