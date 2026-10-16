@@ -1,0 +1,33 @@
+{
+  "name": "savemate-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for downloading TikTok videos and photos without watermarks on Cloudflare Workers",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "echo \"No test specified\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mercurialzxq/savemate_bot.git"
+  },
+  "keywords": [
+    "telegram-bot",
+    "tiktok-downloader",
+    "cloudflare-workers",
+    "grammy"
+  ],
+  "author": "mercurialzxq",
+  "license": "MIT",
+  "dependencies": {
+    "grammy": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.151.1"
+  }
+}

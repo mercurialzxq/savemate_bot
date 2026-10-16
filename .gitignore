@@ -34,6 +34,7 @@ env/
 
 # Environment variables
 .env
+.dev.vars
 
 # Temporary and download files
 tmp/
@@ -43,6 +44,11 @@ temp_downloads/
 # Logs
 *.log
 logs/
+
+# Node & Wrangler
+node_modules/
+.wrangler/
+dist/
 
 # IDE files
 .idea/
