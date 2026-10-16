@@ -82,6 +82,11 @@ def make_absolute_url(url: Optional[str]) -> Optional[str]:
     return url
 
 
+def generate_random_ip() -> str:
+    import random
+    return f"{random.randint(40, 180)}.{random.randint(1, 250)}.{random.randint(1, 250)}.{random.randint(1, 250)}"
+
+
 class TikTokService:
     """Service to fetch and download TikTok videos and photo slideshows without watermarks."""
 
@@ -95,10 +100,17 @@ class TikTokService:
 
     async def get_media_info(self, tiktok_url: str) -> TikTokMediaInfo:
         """
-        Query TikTok metadata via TikWM API.
-        Returns parsed TikTokMediaInfo with HD/SD video links or photo slideshow URLs.
+        Query TikTok metadata via TikWM API with dynamic IP and SSSTik fallback.
         """
-        async with aiohttp.ClientSession(headers=self.headers, timeout=self.timeout) as session:
+        client_ip = generate_random_ip()
+        req_headers = {
+            **self.headers,
+            "X-Forwarded-For": client_ip,
+            "Client-IP": client_ip,
+            "X-Real-IP": client_ip,
+        }
+
+        async with aiohttp.ClientSession(headers=req_headers, timeout=self.timeout) as session:
             last_error = None
 
             for endpoint in TIKWM_ENDPOINTS:
@@ -113,29 +125,87 @@ class TikTokService:
                         code = result.get("code")
                         msg = result.get("msg", "")
 
-                        if code != 0:
-                            logger.info("TikWM returned non-zero code %s: %s", code, msg)
-                            if "failed" in msg.lower() or "not found" in msg.lower():
-                                raise TikTokNotFoundError(
-                                    "Не удалось найти видео или публикацию. "
-                                    "Проверьте правильность ссылки, возможно, публикация удалена или скрыта настройками приватности."
-                                )
-                            raise TikTokError(f"Ошибка получения данных: {msg or 'неизвестная ошибка'}")
+                        if code == 0 and result.get("data"):
+                            return self._parse_response(result["data"])
 
-                        data = result.get("data")
-                        if not data:
-                            raise TikTokError("Пустой ответ от сервера TikTok API.")
-
-                        return self._parse_response(data)
+                        logger.warning("TikWM non-zero code %s: %s", code, msg)
+                        last_error = TikTokError(msg or "TikWM error")
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                     logger.warning("Network error on %s: %s", endpoint, err)
                     last_error = err
                     continue
 
+            # Fallback to SSSTik if TikWM fails or rate limits
+            try:
+                logger.info("Falling back to SSSTik for %s", tiktok_url)
+                return await self._get_ssstik_media_info(session, tiktok_url)
+            except Exception as ssstik_err:
+                logger.error("SSSTik fallback failed: %s", ssstik_err)
+
             if last_error:
-                raise TikTokError("Сервис скачивания временно недоступен. Попробуйте снова через минуту.")
+                raise last_error
             raise TikTokError("Не удалось получить информацию о публикации.")
+
+    async def _get_ssstik_media_info(self, session: aiohttp.ClientSession, url: str) -> TikTokMediaInfo:
+        """Fallback scraper using ssstik.io."""
+        import re
+        async with session.get("https://ssstik.io/en") as resp:
+            if resp.status != 200:
+                raise TikTokError("SSSTik недоступен")
+            html = await resp.text()
+
+        tt_match = re.search(r's_tt\s*=\s*[\'"]([^\'"]+)[\'"]', html)
+        if not tt_match:
+            raise TikTokError("Не удалось получить ключ SSSTik")
+
+        post_data = {"id": url, "locale": "en", "tt": tt_match.group(1)}
+        post_headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://ssstik.io",
+            "Referer": "https://ssstik.io/en",
+        }
+        async with session.post("https://ssstik.io/abc?url=dl", data=post_data, headers=post_headers) as resp:
+            if resp.status != 200:
+                raise TikTokError("Ошибка ответа от SSSTik")
+            res_html = await resp.text()
+
+        title_match = re.search(r'<p class=["\']maintext["\']>([^<]*)</p>', res_html)
+        title = title_match.group(1).strip() if title_match else ""
+
+        author_match = re.search(r'<h2>([^<]*)</h2>', res_html)
+        author_nick = author_match.group(1).strip() if author_match else None
+
+        # Images check
+        images = []
+        for m in re.finditer(r'class=["\']splide__slide["\'][^>]*>[\s\S]*?href=["\']([^"\']+)["\']', res_html):
+            images.append(m.group(1))
+
+        music_match = re.search(r'href=["\']([^"\']+)["\'][^>]*class=["\'][^"\']*music[^"\']*["\']', res_html)
+        music_url = music_match.group(1) if music_match else None
+
+        if images:
+            return TikTokMediaInfo(
+                id="ssstik_photos",
+                title=title,
+                media_type=TikTokItemType.PHOTOS,
+                images=images,
+                author=TikTokAuthor(nickname=author_nick),
+                music=TikTokMusic(url=music_url, title="Оригинальный звук", author=author_nick) if music_url else None,
+            )
+
+        video_match = re.search(r'href=["\']([^"\']+)["\'][^>]*class=["\'][^"\']*without_watermark[^"\']*["\']', res_html)
+        if not video_match:
+            raise TikTokError("Не удалось найти ссылку на видео без вотермарки")
+
+        return TikTokMediaInfo(
+            id="ssstik_video",
+            title=title,
+            media_type=TikTokItemType.VIDEO,
+            video_url=video_match.group(1),
+            author=TikTokAuthor(nickname=author_nick),
+            music=TikTokMusic(url=music_url, title="Оригинальный звук", author=author_nick) if music_url else None,
+        )
 
     def _parse_response(self, data: dict) -> TikTokMediaInfo:
         """Parse the raw response dictionary into TikTokMediaInfo."""
